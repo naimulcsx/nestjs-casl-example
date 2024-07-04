@@ -1,6 +1,8 @@
 import { Ability, AbilityBuilder } from '@casl/ability';
 import { Injectable } from '@nestjs/common';
-import Role from 'src/users/role.enum';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Role } from './entities/role.entity';
 
 export type Actions = 'manage' | 'create' | 'read' | 'update' | 'delete';
 export type Subjects = 'all' | 'Post';
@@ -9,30 +11,34 @@ export type AppAbility = Ability<[Actions, Subjects]>;
 
 @Injectable()
 export class CaslFactory {
-  defineAbility(user: any): AppAbility {
-    const { can, cannot, rules } = new AbilityBuilder<
-      Ability<[Actions, Subjects]>
-    >(Ability);
+  constructor(
+    @InjectRepository(Role)
+    private rolesRepository: Repository<Role>,
+  ) {}
 
-    switch (user?.role) {
-      case Role.Admin:
-        can('manage', 'all'); // Admin can do everything
-        break;
-      case Role.Editor:
-        can('create', 'Post');
-        can('read', 'Post');
-        can('update', 'Post');
-        cannot('delete', 'Post'); // Editor cannot delete
-        break;
-      case Role.User:
-        can('read', 'Post'); // Users can only read
-        cannot('create', 'Post');
-        cannot('update', 'Post');
-        cannot('delete', 'Post');
-        break;
-      default:
-        can('read', 'Post'); // Default to read-only
-        break;
+  async defineAbility(user: any): Promise<AppAbility> {
+    const { can, rules } = new AbilityBuilder<Ability<[Actions, Subjects]>>(
+      Ability,
+    );
+
+    if (user) {
+      const role = await this.rolesRepository.findOne({
+        where: { name: user.role },
+        relations: ['permissions'],
+      });
+      if (role) {
+        role.permissions.forEach((permission) => {
+          if (permission.conditions) {
+            can(
+              permission.action as Actions,
+              permission.subject as Subjects,
+              permission.conditions,
+            );
+          } else {
+            can(permission.action as Actions, permission.subject as Subjects);
+          }
+        });
+      }
     }
 
     return new Ability(rules);

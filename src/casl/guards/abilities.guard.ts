@@ -14,14 +14,14 @@ export class AbilitiesGuard implements CanActivate {
     private caslFactory: CaslFactory,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const rules =
       this.reflector.get<RequiredRule[]>(CHECK_ABILITY, context.getHandler()) ||
       [];
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    const ability = this.caslFactory.defineAbility(user);
+    const ability = await this.caslFactory.defineAbility(user);
 
     for (const rule of rules) {
       if (ability.cannot(rule.action, rule.subject)) {
